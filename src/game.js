@@ -12,7 +12,27 @@ class SpaceShooterScene extends Phaser.Scene {
   }
 
   preload() {
-    // Generación procedural de texturas vectoriales retro en memoria (sin dependencias externas ni CORS)
+    // =========================================================================
+    // GUÍA DE INTEGRACIÓN DE RECURSOS EXTERNOS (GitHub Pages & Live Server)
+    // =========================================================================
+    // NOTA DE ARQUITECTURA: Al desplegar en GitHub Pages (ej. https://user.github.io/repo/),
+    // NUNCA uses rutas absolutas con barra inicial como '/assets/images/...' ya que apuntarían
+    // a la raíz del dominio principal generando errores 404. Utiliza siempre rutas relativas:
+    //
+    // --- Carga de Sprites / Imágenes (assets/images/) ---
+    // this.load.image('playerShip', 'assets/images/player.png');
+    // this.load.image('enemyShip', 'assets/images/enemy.png');
+    // this.load.image('meteor', 'assets/images/meteor.png');
+    // this.load.image('laser', 'assets/images/laser.png');
+    //
+    // --- Carga de Efectos de Sonido y Música (assets/audio/) ---
+    // this.load.audio('laserSfx', 'assets/audio/laser.wav');
+    // this.load.audio('explosionSfx', 'assets/audio/explosion.wav');
+    // this.load.audio('bgMusic', 'assets/audio/bgm.mp3');
+    // =========================================================================
+
+    // Generación procedural de texturas vectoriales retro en memoria.
+    // Mantiene el juego 100% funcional y autocontenido sin depender de archivos externos por ahora.
     this.createProceduralTextures();
   }
 
@@ -20,8 +40,15 @@ class SpaceShooterScene extends Phaser.Scene {
     // Estado del juego
     this.score = 0;
     this.isGameOver = false;
+    this.isVictory = false;
     this.lastFired = 0;
     this.fireCooldown = 220; // Cooldown de disparo en milisegundos (~220 ms)
+
+    // Objetivos de la misión
+    this.targetShips = 10;
+    this.targetMeteors = 6;
+    this.shipsDestroyed = 0;
+    this.meteorsDestroyed = 0;
 
     // 1. Fondo de estrellas con efecto parallax retro
     this.createStarfield();
@@ -288,7 +315,16 @@ class SpaceShooterScene extends Phaser.Scene {
     if (this.isGameOver) return;
 
     const x = Phaser.Math.Between(40, 760);
-    const isEnemy = Math.random() < 0.45;
+
+    // Balance dinámico de aparición según el progreso de la misión
+    let enemyProb = 0.5;
+    if (this.shipsDestroyed >= this.targetShips && this.meteorsDestroyed < this.targetMeteors) {
+      enemyProb = 0.2; // Priorizar meteoritos si ya se completaron las naves
+    } else if (this.meteorsDestroyed >= this.targetMeteors && this.shipsDestroyed < this.targetShips) {
+      enemyProb = 0.8; // Priorizar naves si ya se completaron los meteoritos
+    }
+
+    const isEnemy = Math.random() < enemyProb;
 
     if (isEnemy) {
       // Enemigo (Fighter)
@@ -353,6 +389,13 @@ class SpaceShooterScene extends Phaser.Scene {
 
     this.createExplosion(x, y, 0xff1744, 16);
     this.addScore(20);
+
+    // Conteo para el objetivo de naves
+    if (this.shipsDestroyed < this.targetShips) {
+      this.shipsDestroyed++;
+      this.updateObjectiveUI();
+      this.checkWinCondition();
+    }
   }
 
   /**
@@ -366,6 +409,72 @@ class SpaceShooterScene extends Phaser.Scene {
 
     this.createExplosion(x, y, 0xb8865c, 12);
     this.addScore(10);
+
+    // Conteo para el objetivo de meteoritos
+    if (this.meteorsDestroyed < this.targetMeteors) {
+      this.meteorsDestroyed++;
+      this.updateObjectiveUI();
+      this.checkWinCondition();
+    }
+  }
+
+  /**
+   * Verifica si se cumplió el objetivo de la misión (10 naves y 6 meteoritos)
+   */
+  checkWinCondition() {
+    if (this.isGameOver) return;
+
+    if (this.shipsDestroyed >= this.targetShips && this.meteorsDestroyed >= this.targetMeteors) {
+      this.triggerVictory();
+    }
+  }
+
+  /**
+   * Secuencia triunfal al completar la misión
+   */
+  triggerVictory() {
+    this.isGameOver = true;
+    this.isVictory = true;
+
+    // Detener generador de amenazas
+    if (this.spawnTimer) {
+      this.spawnTimer.remove();
+    }
+
+    // Desactivar colisiones del jugador
+    this.player.body.enable = false;
+
+    // Destruir amenazas restantes en pantalla con explosiones limpias
+    this.enemies.getChildren().forEach(enemy => {
+      this.createExplosion(enemy.x, enemy.y, 0xff1744, 10);
+    });
+    this.meteors.getChildren().forEach(meteor => {
+      this.createExplosion(meteor.x, meteor.y, 0xb8865c, 10);
+    });
+    this.enemies.clear(true, true);
+    this.meteors.clear(true, true);
+    this.lasers.clear(true, true);
+
+    // Salto al hiperespacio: la nave vuela triunfalmente hacia arriba
+    this.tweens.add({
+      targets: this.player,
+      y: -90,
+      duration: 1000,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        this.showVictoryScreen();
+      }
+    });
+
+    // Celebración con fuegos artificiales espaciales
+    const celebrationColors = [0x00f0ff, 0x39ff14, 0xffea00, 0xff0055];
+    for (let i = 0; i < 6; i++) {
+      this.time.delayedCall(i * 150, () => {
+        const rx = Phaser.Math.Between(150, 650);
+        const ry = Phaser.Math.Between(100, 360);
+        this.createExplosion(rx, ry, celebrationColors[i % celebrationColors.length], 20);
+      });
+    }
   }
 
   /**
@@ -458,41 +567,130 @@ class SpaceShooterScene extends Phaser.Scene {
   }
 
   /**
-   * Creación del HUD retro
+   * Creación del HUD retro con visualizador de objetivos
    */
   createHUD() {
     // Línea divisoria superior retro
     this.add.rectangle(400, 48, 800, 2, 0x1f2937);
 
-    // Texto de Puntaje
+    // Texto de Puntaje (Izquierda)
     this.scoreText = this.add.text(24, 16, `SCORE: ${this.padNumber(this.score, 5)}`, {
       fontFamily: '"Courier New", Courier, monospace',
-      fontSize: '20px',
+      fontSize: '18px',
       fontStyle: 'bold',
       color: '#00f0ff'
     });
 
-    // Texto de Récord
+    // Texto del Objetivo de la Misión (Centro)
+    this.objectiveText = this.add.text(400, 16, '', {
+      fontFamily: '"Courier New", Courier, monospace',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5, 0);
+
+    // Texto de Récord (Derecha)
     this.highScoreText = this.add.text(776, 16, `RECORD: ${this.padNumber(highScore, 5)}`, {
       fontFamily: '"Courier New", Courier, monospace',
-      fontSize: '20px',
+      fontSize: '18px',
       fontStyle: 'bold',
       color: '#ffea00'
     }).setOrigin(1, 0);
 
+    // Actualizar indicador inicial del objetivo
+    this.updateObjectiveUI();
+
     // Mensaje tutorial inicial que se desvanece
-    const hintText = this.add.text(400, 575, '[WASD / FLECHAS] Mover  •  [ESPACIO] Disparar', {
+    const hintText = this.add.text(400, 575, '[WASD / FLECHAS] Mover  •  [ESPACIO] Disparar  •  Misión: 10 Naves y 6 Meteoritos', {
       fontFamily: '"Courier New", Courier, monospace',
       fontSize: '13px',
-      color: '#64748b'
+      color: '#94a3b8'
     }).setOrigin(0.5);
 
     this.tweens.add({
       targets: hintText,
       alpha: 0,
-      delay: 4500,
+      delay: 5000,
       duration: 1500,
       onComplete: () => hintText.destroy()
+    });
+  }
+
+  /**
+   * Actualiza el marcador del objetivo en tiempo real
+   */
+  updateObjectiveUI() {
+    const shipsDone = this.shipsDestroyed >= this.targetShips;
+    const meteorsDone = this.meteorsDestroyed >= this.targetMeteors;
+
+    const shipTag = `NAVES: ${this.shipsDestroyed}/${this.targetShips}${shipsDone ? ' ✓' : ''}`;
+    const meteorTag = `METEOROS: ${this.meteorsDestroyed}/${this.targetMeteors}${meteorsDone ? ' ✓' : ''}`;
+
+    this.objectiveText.setText(`MISIÓN: ${shipTag} | ${meteorTag}`);
+
+    if (shipsDone && meteorsDone) {
+      this.objectiveText.setColor('#39ff14');
+    } else {
+      this.objectiveText.setColor('#ffffff');
+    }
+  }
+
+  /**
+   * Despliegue de la pantalla de Victoria / Misión Cumplida
+   */
+  showVictoryScreen() {
+    // Capa de fondo oscurecida espacial
+    const overlay = this.add.rectangle(400, 300, 800, 600, 0x050a14, 0.85);
+    overlay.setDepth(10);
+
+    // Título ¡MISIÓN CUMPLIDA!
+    this.add.text(400, 190, '¡MISIÓN CUMPLIDA!', {
+      fontFamily: '"Courier New", Courier, monospace',
+      fontSize: '46px',
+      fontStyle: 'bold',
+      color: '#39ff14'
+    }).setOrigin(0.5).setDepth(11);
+
+    // Detalle del objetivo alcanzado
+    this.add.text(400, 255, 'Has destruido con éxito 10 naves y 6 meteoritos', {
+      fontFamily: '"Courier New", Courier, monospace',
+      fontSize: '17px',
+      fontStyle: 'bold',
+      color: '#00f0ff'
+    }).setOrigin(0.5).setDepth(11);
+
+    // Puntaje final alcanzado
+    this.add.text(400, 305, `PUNTAJE FINAL: ${this.padNumber(this.score, 5)}`, {
+      fontFamily: '"Courier New", Courier, monospace',
+      fontSize: '22px',
+      fontStyle: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5).setDepth(11);
+
+    // Indicador si superó el récord
+    if (this.score >= highScore && this.score > 0) {
+      this.add.text(400, 345, '★ ¡NUEVO RECORD CONSEGUIDO! ★', {
+        fontFamily: '"Courier New", Courier, monospace',
+        fontSize: '18px',
+        fontStyle: 'bold',
+        color: '#ffea00'
+      }).setOrigin(0.5).setDepth(11);
+    }
+
+    // Instrucción para jugar de nuevo
+    const restartPrompt = this.add.text(400, 410, 'Presiona [ENTER] o [R] para jugar de nuevo', {
+      fontFamily: '"Courier New", Courier, monospace',
+      fontSize: '18px',
+      fontStyle: 'bold',
+      color: '#39ff14'
+    }).setOrigin(0.5).setDepth(11);
+
+    this.tweens.add({
+      targets: restartPrompt,
+      alpha: 0.25,
+      yoyo: true,
+      repeat: -1,
+      duration: 550
     });
   }
 
