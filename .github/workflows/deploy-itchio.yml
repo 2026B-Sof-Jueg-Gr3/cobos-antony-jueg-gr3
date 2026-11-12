@@ -15,8 +15,21 @@ jobs:
       - name: Descargar repositorio (Checkout)
         uses: actions/checkout@v4
 
-      - name: Instalar Butler CLI nativo
+      - name: Validar presencia de secretos
+        env:
+          KEY_EXISTS: ${{ secrets.BUTLER_API_KEY != '' }}
+          USER_EXISTS: ${{ secrets.ITCH_USERNAME != '' }}
+          GAME_EXISTS: ${{ secrets.ITCH_GAME_ID != '' }}
         run: |
+          echo "Comprobando disponibilidad de secretos de GitHub..."
+          if [ "$KEY_EXISTS" != "true" ]; then echo "ERROR CRÍTICO: El secret BUTLER_API_KEY está vacío o no existe"; exit 1; fi
+          if [ "$USER_EXISTS" != "true" ]; then echo "ERROR CRÍTICO: El secret ITCH_USERNAME está vacío o no existe"; exit 1; fi
+          if [ "$GAME_EXISTS" != "true" ]; then echo "ERROR CRÍTICO: El secret ITCH_GAME_ID está vacío o no existe"; exit 1; fi
+          echo "Todos los secretos están configurados correctamente."
+
+      - name: Instalar Butler CLI oficial
+        run: |
+          mkdir -p bin
           curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip butler.zip -d bin
           chmod +x bin/butler
@@ -25,17 +38,14 @@ jobs:
 
       - name: Validar archivos del juego
         run: |
-          echo "Verificando estructura de entrega para itch.io..."
           test -f index.html || { echo "ERROR: falta index.html (Landing)"; exit 1; }
           test -f game.html || { echo "ERROR: falta game.html (Simulador)"; exit 1; }
           test -d src || { echo "ERROR: falta carpeta src/"; exit 1; }
-          echo "Validación exitosa: Todos los artefactos web están presentes."
 
       - name: Empaquetar build HTML5
         run: |
           mkdir -p dist
           cp -r index.html game.html src assets dist/
-          ls -la dist
 
       - name: Publicar build con Butler en itch.io
         env:
@@ -43,4 +53,4 @@ jobs:
           ITCH_USER: ${{ secrets.ITCH_USERNAME }}
           ITCH_GAME: ${{ secrets.ITCH_GAME_ID }}
         run: |
-          ./bin/butler push dist "${ITCH_USER}/${ITCH_GAME}:html5"
+          ./bin/butler push dist "${ITCH_USER}/${ITCH_GAME}:html5" --userversion "${GITHUB_SHA::7}"
