@@ -1,0 +1,34 @@
+name: Despliegue Continuo a itch.io (Butler)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-to-itchio:
+    name: Publicar en itch.io (HTML5)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio (Checkout)
+        uses: actions/checkout@v4
+
+      - name: Validar archivos del juego
+        run: |
+          echo "Verificando estructura de entrega para itch.io..."
+          ls -la
+          test -f index.html || { echo "ERROR: falta index.html (Landing)"; exit 1; }
+          test -f game.html || { echo "ERROR: falta game.html (Simulador)"; exit 1; }
+          test -d src || { echo "ERROR: falta carpeta src/"; exit 1; }
+          echo "Validación exitosa: Todos los artefactos web están presentes."
+
+      - name: Publicar build HTML5 con Butler
+        uses: josephbmanley/butler-publish-itchio-action@v1.0.3
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
+          CHANNEL: html5
+          ITCH_GAME: ${{ secrets.ITCH_GAME_ID }}
+          ITCH_USER: ${{ secrets.ITCH_USERNAME }}
+          PACKAGE: .

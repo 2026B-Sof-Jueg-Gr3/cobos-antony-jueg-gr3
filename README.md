@@ -1,6 +1,6 @@
-# Retro Space Shooter 2D - Phaser 3
+# VOID VANGUARD - 2D Space Combat Simulator
 
-Juego 2D estilo retro vertical space shooter desarrollado con **Phaser 3**, arquitectura modular en **ES Modules** y **Arcade Physics**.
+Juego 2D estilo retro vertical space shooter desarrollado con **Phaser 3**, arquitectura modular en **ES Modules**, síntesis de sonido procedural y **Arcade Physics**.
 
 ## Estructura Modular del Proyecto
 

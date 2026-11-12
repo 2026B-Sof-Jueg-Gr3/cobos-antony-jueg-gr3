@@ -17,6 +17,7 @@ export function saveHighScore(score) {
 export function createGameConfig(scene) {
   return {
     type: Phaser.AUTO,
+    parent: 'game-container',
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
     backgroundColor: BG_COLOR,
