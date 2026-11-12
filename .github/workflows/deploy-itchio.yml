@@ -15,20 +15,32 @@ jobs:
       - name: Descargar repositorio (Checkout)
         uses: actions/checkout@v4
 
+      - name: Instalar Butler CLI nativo
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip -d bin
+          chmod +x bin/butler
+          ./bin/butler -V
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+
       - name: Validar archivos del juego
         run: |
           echo "Verificando estructura de entrega para itch.io..."
-          ls -la
           test -f index.html || { echo "ERROR: falta index.html (Landing)"; exit 1; }
           test -f game.html || { echo "ERROR: falta game.html (Simulador)"; exit 1; }
           test -d src || { echo "ERROR: falta carpeta src/"; exit 1; }
           echo "Validación exitosa: Todos los artefactos web están presentes."
 
-      - name: Publicar build HTML5 con Butler
-        uses: josephbmanley/butler-publish-itchio-action@v1.0.3
+      - name: Empaquetar build HTML5
+        run: |
+          mkdir -p dist
+          cp -r index.html game.html src assets dist/
+          ls -la dist
+
+      - name: Publicar build con Butler en itch.io
         env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
-          CHANNEL: html5
-          ITCH_GAME: ${{ secrets.ITCH_GAME_ID }}
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
           ITCH_USER: ${{ secrets.ITCH_USERNAME }}
-          PACKAGE: .
+          ITCH_GAME: ${{ secrets.ITCH_GAME_ID }}
+        run: |
+          ./bin/butler push dist "${ITCH_USER}/${ITCH_GAME}:html5"
